@@ -1,0 +1,91 @@
+---
+title: "Scordilis"
+author: "Ben Baumer"
+date: "March 2, 2018"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(tidyverse)
+```
+
+Read and transform the data
+
+```{r, message=FALSE}
+# mice <- read_csv("mice.csv") %>%
+mice <- read_csv("Blot_data_updated.csv") %>%
+  transmute(time = `Time point`,
+            sex = Sex,
+            id = `Mouse #`,
+            erb = `ERB Normalized Final`,
+            era = `ERA Normalized Final`,
+            gper = `GPER Normalized Final`) %>%
+  mutate(day = case_when(
+    time == 0 ~ -1,
+    time == 1 ~ 0,
+    time == 2 ~ 1,
+    time == 3 ~ 3,
+    time == 4 ~ 5,
+    time == 5 ~ 7
+  ),
+    type = ifelse(time == 0, "control", "treatment"))
+mice_tidy <- mice %>%
+  select(-time) %>%
+  gather(key = "protein", value = "amount", -day, -sex, -id, -type)
+```
+
+The plot
+
+```{r, fig.width=10, fig.height=8}
+# baseline
+mice_baselines <- mice_tidy %>%
+  filter(type == "control") %>%
+  group_by(sex, protein) %>%
+  summarize(N = n(), mean_amount = mean(amount))
+
+mice_tidy %>%
+  filter(type == "treatment") %>%
+ggplot(aes(x = day, y = amount, color = sex)) + 
+  geom_hline(data = mice_baselines, aes(yintercept = mean_amount), linetype = 2) +
+  geom_boxplot(aes(group = day), color = "darkgray") + 
+  geom_point() + 
+  geom_smooth(se = 0) + 
+  geom_smooth(method = "lm") + 
+  facet_grid(sex ~ protein) + 
+  scale_y_continuous("Protein Amount (integrated pixel intensities)") + 
+  scale_x_continuous("Time after exercise (days)")
+```
+
+Check the baseline amounts
+
+```{r}
+mice %>%
+  filter(type == "control") %>%
+  group_by(sex) %>%
+  summarize(N = n(), mean_era = mean(era), mean_erb = mean(erb), mean_gper = mean(gper))
+
+mice %>%
+  filter(type == "control") %>%
+  lm(gper ~ sex, data = .) %>%
+  summary()
+
+```
+
+## Modeling
+
+```{r}
+lhs <- c("era", "erb", "gper")
+rhs <- " day * sex"
+
+test_models <- function(lhs, rhs, ...) {
+  message(lhs)
+  mod <- lm(paste(lhs, "~", rhs), data = filter(mice, type == "treatment"))
+  print(summary(mod))
+  print(anova(mod))
+}
+
+lapply(lhs, test_models, rhs)
+
+
+```
+
