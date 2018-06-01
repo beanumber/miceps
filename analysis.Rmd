@@ -41,19 +41,28 @@ The plot
 mice_baselines <- mice_tidy %>%
   filter(type == "control") %>%
   group_by(sex, protein) %>%
-  summarize(N = n(), mean_amount = mean(amount))
+  do(mod = broom::tidy(lm(amount ~ 1, data = .))) %>% 
+  unnest()
 
-mice_tidy %>%
-  filter(type == "treatment") %>%
-ggplot(aes(x = day, y = amount, color = sex)) + 
-  geom_hline(data = mice_baselines, aes(yintercept = mean_amount), linetype = 2) +
-  geom_boxplot(aes(group = day), color = "darkgray") + 
-  geom_point() + 
-  geom_smooth(se = 0) + 
-  geom_smooth(method = "lm") + 
-  facet_grid(sex ~ protein) + 
+mice_treatment <- mice_tidy %>%
+  filter(type == "treatment")
+
+baseline_plot <- mice_baselines %>%
+  ggplot(aes(color = sex)) +
+  geom_hline(aes(yintercept = estimate, color = sex), linetype = 2) + 
+  geom_hline(aes(yintercept = estimate + 1.96*std.error, color = sex), linetype = 3) + 
+  geom_hline(aes(yintercept = estimate - 1.96*std.error, color = sex), linetype = 3) + 
+  facet_grid(protein ~ sex) + 
+#  facet_wrap(~protein) +
   scale_y_continuous("Protein Amount (integrated pixel intensities)") + 
-  scale_x_continuous("Time after exercise (days)")
+  scale_x_continuous("Time after exercise (days)", breaks = seq(1, 7, by = 2))
+
+
+baseline_plot +
+  geom_jitter(data = mice_treatment, height = 0, aes(y = amount, x = day)) +
+#  geom_smooth(data = mice_tidy, aes(y = amount, x = day), se = 0) +
+  geom_smooth(data = mice_treatment, aes(y = amount, x = day), method = "lm")
+#  geom_boxplot(data = mice_tidy, aes(y = amount, x = day, group = day), color = "darkgray")
 ```
 
 Check the baseline amounts
@@ -82,10 +91,10 @@ test_models <- function(lhs, rhs, ...) {
   mod <- lm(paste(lhs, "~", rhs), data = filter(mice, type == "treatment"))
   print(summary(mod))
   print(anova(mod))
+  return(mod)
 }
 
-lapply(lhs, test_models, rhs)
-
+mods <- lapply(lhs, test_models, rhs)
 
 ```
 
